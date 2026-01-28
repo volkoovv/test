@@ -1,0 +1,9 @@
+version: "3.8"
+
+services:
+  face-crop:
+    build: .
+    container_name: face-crop
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

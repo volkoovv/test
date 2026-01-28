@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# local outputs / test data
+output/
+фотографии/
+models/
+
+# virtualenvs
+.venv/
+venv/
+env/
+
