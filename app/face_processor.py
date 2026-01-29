@@ -67,18 +67,32 @@ class FaceProcessor:
             if img is None:
                 try:
                     print(f"OpenCV не смог декодировать {filename}, пробуем через PIL...")
+                    # Проверяем поддержку AVIF
+                    try:
+                        from PIL import features
+                        if features.check('avif'):
+                            print(f"✅ PIL поддерживает AVIF")
+                        else:
+                            print(f"⚠️ PIL не поддерживает AVIF (возможно нужен pillow-avif-plugin)")
+                    except:
+                        print(f"⚠️ Не удалось проверить поддержку AVIF в PIL")
+                    
                     pil_img = Image.open(io.BytesIO(image_bytes))
                     print(f"PIL успешно открыл {filename}, формат: {pil_img.format}, размер: {pil_img.size}, режим: {pil_img.mode}")
+                    
                     # Конвертируем в RGB если нужно
                     if pil_img.mode != 'RGB':
                         pil_img = pil_img.convert('RGB')
+                    
                     # Конвертируем PIL в numpy array (RGB)
                     img_rgb = np.array(pil_img)
+                    print(f"PIL -> numpy: размер={img_rgb.shape}, тип={img_rgb.dtype}, min={img_rgb.min()}, max={img_rgb.max()}")
+                    
                     # Конвертируем RGB в BGR для OpenCV
                     img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-                    print(f"Изображение {filename} успешно декодировано через PIL")
+                    print(f"✅ Изображение {filename} успешно декодировано через PIL -> OpenCV")
                 except Exception as e:
-                    print(f"Ошибка декодирования изображения {filename} через PIL: {type(e).__name__}: {e}")
+                    print(f"❌ Ошибка декодирования изображения {filename} через PIL: {type(e).__name__}: {e}")
                     import traceback
                     print(traceback.format_exc())
                     return None
@@ -105,9 +119,11 @@ class FaceProcessor:
             
             # Конвертация BGR в RGB для MediaPipe
             img_rgb = cv2.cvtColor(resized_img, cv2.COLOR_BGR2RGB)
+            print(f"Изображение {filename} подготовлено для детекции: размер={img_rgb.shape}, тип={img_rgb.dtype}")
             
             # Детекция лиц на уменьшенном изображении (сначала пробуем быструю модель)
             detection_results = self.face_detection.process(img_rgb)
+            print(f"Быстрая модель для {filename}: найдено лиц = {len(detection_results.detections) if detection_results.detections else 0}")
             
             # Если не нашли лицо быстрой моделью, пробуем более точную модель (model_selection=1)
             if not detection_results.detections or len(detection_results.detections) == 0:
@@ -115,13 +131,14 @@ class FaceProcessor:
                 # Создаем временный детектор с более точной моделью
                 accurate_detector = self.mp_face_detection.FaceDetection(
                     model_selection=1,  # Более точная модель для дальних/сложных лиц
-                    min_detection_confidence=0.3  # Снижаем порог для лучшей детекции
+                    min_detection_confidence=0.2  # Еще больше снижаем порог для лучшей детекции
                 )
                 detection_results = accurate_detector.process(img_rgb)
+                print(f"Точная модель для {filename}: найдено лиц = {len(detection_results.detections) if detection_results.detections else 0}")
                 accurate_detector.close()
             
             if not detection_results.detections or len(detection_results.detections) == 0:
-                print(f"Лицо не найдено на изображении {filename}")
+                print(f"❌ Лицо не найдено на изображении {filename} (размер: {img_rgb.shape})")
                 return None
             
             # Выбор лучшего лица
