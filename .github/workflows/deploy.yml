@@ -1,0 +1,32 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Позволяет запускать вручную через GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        script: |
+          cd /opt/face-crop
+          git pull origin main
+          docker compose down
+          docker compose build --no-cache
+          docker compose up -d
+          sleep 10
+          docker compose ps
+          echo "✅ Деплой завершен!"
+          echo "🌐 Сервис доступен на: http://${{ secrets.VPS_HOST }}:8000"
