@@ -6,6 +6,13 @@ from pathlib import Path
 from typing import Optional, Dict, Tuple
 import mediapipe as mp
 
+# Регистрируем поддержку AVIF через pillow-avif-plugin
+try:
+    import pillow_avif
+    print("✅ pillow-avif-plugin загружен, AVIF поддерживается")
+except ImportError:
+    print("⚠️ pillow-avif-plugin не найден, AVIF может не работать")
+
 class FaceProcessor:
     def __init__(self, output_size: int = 512, face_fill_ratio: float = 0.65):
         """
