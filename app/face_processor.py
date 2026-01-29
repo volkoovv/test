@@ -66,7 +66,9 @@ class FaceProcessor:
             # Если OpenCV не смог декодировать (например, AVIF, WebP), пробуем через PIL
             if img is None:
                 try:
+                    print(f"OpenCV не смог декодировать {filename}, пробуем через PIL...")
                     pil_img = Image.open(io.BytesIO(image_bytes))
+                    print(f"PIL успешно открыл {filename}, формат: {pil_img.format}, размер: {pil_img.size}, режим: {pil_img.mode}")
                     # Конвертируем в RGB если нужно
                     if pil_img.mode != 'RGB':
                         pil_img = pil_img.convert('RGB')
@@ -74,9 +76,11 @@ class FaceProcessor:
                     img_rgb = np.array(pil_img)
                     # Конвертируем RGB в BGR для OpenCV
                     img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-                    print(f"Изображение декодировано через PIL: {filename}")
+                    print(f"Изображение {filename} успешно декодировано через PIL")
                 except Exception as e:
-                    print(f"Ошибка декодирования изображения {filename}: {e}")
+                    print(f"Ошибка декодирования изображения {filename} через PIL: {type(e).__name__}: {e}")
+                    import traceback
+                    print(traceback.format_exc())
                     return None
             
             # Исправление ориентации по EXIF
