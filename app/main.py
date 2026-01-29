@@ -26,47 +26,59 @@ async def root():
   <title>Face Crop 512×512</title>
   <style>
     :root { color-scheme: light; }
-    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+    * { box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; padding: 16px; -webkit-font-smoothing: antialiased; }
     .wrap { max-width: 900px; margin: 0 auto; }
+    h2 { margin-top: 0; font-size: 24px; }
     .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
-    .row { display:flex; gap: 16px; flex-wrap: wrap; align-items: center; }
-    .muted { color: #6b7280; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #111827; background:#111827; color:white; cursor:pointer; }
+    .row { display:flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .muted { color: #6b7280; font-size: 14px; }
+    button { padding: 12px 18px; min-height: 44px; border-radius: 10px; border: 1px solid #111827; background:#111827; color:white; cursor:pointer; font-size: 16px; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     button[disabled] { opacity:.6; cursor:not-allowed; }
     button.secondary { border: 1px solid #d1d5db; background: #fff; color: #374151; }
-    button.secondary:hover { background: #f9fafb; border-color: #9ca3af; }
-    .file-input-wrapper { position: relative; display: inline-block; }
+    button.secondary:active { background: #f9fafb; border-color: #9ca3af; }
+    .file-input-wrapper { position: relative; display: inline-block; width: 100%; }
     input[type=file] { position: absolute; opacity: 0; width: 0; height: 0; }
-    .file-input-button { padding: 12px 20px; border-radius: 10px; border: 2px solid #1d4ed8; background: #1d4ed8; color: white; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s; }
-    .file-input-button:hover { background: #1e40af; border-color: #1e40af; box-shadow: 0 2px 8px rgba(29, 78, 216, 0.3); }
-    .file-input-button:active { transform: scale(0.98); }
-    .file-input-icon { font-size: 18px; }
+    .file-input-button { padding: 14px 20px; min-height: 44px; border-radius: 10px; border: 2px solid #1d4ed8; background: #1d4ed8; color: white; cursor: pointer; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; width: 100%; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .file-input-button:active { background: #1e40af; border-color: #1e40af; transform: scale(0.98); }
+    .file-input-icon { font-size: 20px; }
     button.hidden { display: none; }
-    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 12px; margin-top: 12px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 12px; margin-top: 12px; }
     .thumb { border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px; background: #fafafa; transition: all 0.2s; position: relative; }
-    .thumb:hover { border-color: #1d4ed8; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    .thumb-img-wrapper { width: 100%; height: 200px; display: flex; align-items: center; justify-content: center; background: #f9fafb; border-radius: 8px; overflow: hidden; cursor: pointer; }
+    .thumb:active { border-color: #1d4ed8; }
+    .thumb-img-wrapper { width: 100%; height: 180px; display: flex; align-items: center; justify-content: center; background: #f9fafb; border-radius: 8px; overflow: hidden; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     .thumb img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; display:block; }
     .thumb-name { margin-top: 8px; font-size: 12px; color: #6b7280; word-break: break-word; }
-    .thumb-remove { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; background: rgba(0,0,0,0.7); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1; transition: all 0.2s; z-index: 10; }
-    .thumb-remove:hover { background: rgba(220, 38, 38, 0.9); transform: scale(1.1); }
-    .thumb-remove:active { transform: scale(0.95); }
-    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); cursor: pointer; }
-    .modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90vw; max-height: 90vh; object-fit: contain; }
-    .modal-close { position: absolute; top: 20px; right: 30px; color: #fff; font-size: 40px; font-weight: bold; cursor: pointer; }
-    .modal-close:hover { color: #ccc; }
+    .thumb-remove { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: 50%; background: rgba(0,0,0,0.7); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; transition: all 0.2s; z-index: 10; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .thumb-remove:active { background: rgba(220, 38, 38, 0.9); transform: scale(0.9); }
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); cursor: pointer; touch-action: manipulation; }
+    .modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 95vw; max-height: 95vh; object-fit: contain; }
+    .modal-close { position: absolute; top: 10px; right: 20px; color: #fff; font-size: 48px; font-weight: bold; cursor: pointer; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    .modal-close:active { color: #ccc; transform: scale(0.9); }
     .out { margin-top: 16px; }
-    .out img { max-width: 512px; width: 100%; border-radius: 12px; border: 1px solid #e5e7eb; }
-    .err { color: #b91c1c; white-space: pre-wrap; }
-    .ok { color: #065f46; }
-    .link { color: #1d4ed8; }
+    .out img { max-width: 100%; width: 100%; border-radius: 12px; border: 1px solid #e5e7eb; }
+    .err { color: #b91c1c; white-space: pre-wrap; font-size: 14px; }
+    .ok { color: #065f46; font-size: 16px; }
+    .link { color: #1d4ed8; text-decoration: underline; font-size: 16px; }
     .result-previews { margin-top: 16px; }
-    .result-previews-title { font-weight: 500; margin-bottom: 12px; color: #374151; }
+    .result-previews-title { font-weight: 500; margin-bottom: 12px; color: #374151; font-size: 16px; }
     .loader { display: none; margin: 20px auto; text-align: center; }
     .loader.active { display: block; }
     .spinner { border: 4px solid #f3f4f6; border-top: 4px solid #1d4ed8; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 12px; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     .loader-text { color: #6b7280; font-size: 14px; }
+    
+    @media (max-width: 640px) {
+      body { padding: 12px; }
+      h2 { font-size: 20px; }
+      .card { padding: 12px; }
+      .row { gap: 8px; }
+      button { padding: 12px 16px; font-size: 15px; width: 100%; }
+      .file-input-button { padding: 12px 16px; font-size: 15px; }
+      .grid { grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap: 8px; }
+      .thumb-img-wrapper { height: 150px; }
+      .modal-close { top: 5px; right: 10px; font-size: 40px; width: 44px; height: 44px; }
+    }
   </style>
 </head>
 <body>
@@ -77,7 +89,7 @@ async def root():
     <div class="card">
       <div class="row">
         <div class="file-input-wrapper">
-          <input id="files" type="file" accept="image/*" multiple />
+          <input id="files" type="file" accept="image/*" multiple capture="environment" />
           <label for="files" class="file-input-button">
             <span class="file-input-icon">📁</span>
             <span>Выбрать файлы</span>
@@ -173,15 +185,34 @@ async def root():
       elModal.style.display = 'none';
     }
 
-    elModalClose.addEventListener('click', closeModal);
+    elModalClose.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeModal();
+    });
+    elModalClose.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeModal();
+    });
     elModal.addEventListener('click', (e) => {
       if (e.target === elModal) closeModal();
+    });
+    elModal.addEventListener('touchend', (e) => {
+      if (e.target === elModal) {
+        e.preventDefault();
+        closeModal();
+      }
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeModal();
     });
 
     elReset.addEventListener('click', resetAll);
+    elReset.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      resetAll();
+    });
 
     function renderPreviews(files) {
       clearPreviews();
@@ -196,8 +227,19 @@ async def root():
           </div>
           <div class="thumb-name">${f.name}</div>
         `;
-        div.querySelector('.thumb-img-wrapper').addEventListener('click', () => openModal(url));
-        div.querySelector('.thumb-remove').addEventListener('click', (e) => {
+        const imgWrapper = div.querySelector('.thumb-img-wrapper');
+        imgWrapper.addEventListener('click', () => openModal(url));
+        imgWrapper.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          openModal(url);
+        });
+        const removeBtn = div.querySelector('.thumb-remove');
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeFile(index);
+        });
+        removeBtn.addEventListener('touchend', (e) => {
+          e.preventDefault();
           e.stopPropagation();
           removeFile(index);
         });
@@ -222,6 +264,10 @@ async def root():
           <div class="thumb-name">${imgData.filename}</div>
         `;
         div.addEventListener('click', () => openModal(url));
+        div.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          openModal(url);
+        });
         grid.appendChild(div);
       });
       
@@ -230,6 +276,10 @@ async def root():
 
     async function extractImagesFromZip(blob) {
       try {
+        if (typeof JSZip === 'undefined') {
+          console.error('JSZip library not loaded');
+          return [];
+        }
         const zip = await JSZip.loadAsync(blob);
         const images = [];
         
@@ -247,15 +297,20 @@ async def root():
       }
     }
 
-    elFiles.addEventListener('change', () => {
+    elFiles.addEventListener('change', (e) => {
       setError('');
       clearResult();
-      if (elFiles.files?.length) {
-        // Добавляем новые файлы в массив (максимум 5 всего)
-        const newFiles = Array.from(elFiles.files);
-        selectedFiles = [...selectedFiles, ...newFiles].slice(0, 5);
-        renderPreviews(selectedFiles);
-        updateUI();
+      try {
+        if (elFiles.files?.length) {
+          // Добавляем новые файлы в массив (максимум 5 всего)
+          const newFiles = Array.from(elFiles.files);
+          selectedFiles = [...selectedFiles, ...newFiles].slice(0, 5);
+          renderPreviews(selectedFiles);
+          updateUI();
+        }
+      } catch (err) {
+        console.error('Error handling file selection:', err);
+        setError('Ошибка при выборе файлов. Попробуйте еще раз.');
       }
       // Сбрасываем значение input чтобы можно было выбрать те же файлы снова
       elFiles.value = '';
