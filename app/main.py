@@ -25,7 +25,8 @@ app.add_middleware(
 
 # Инициализация процессора лиц (CPU)
 # Каждый воркер uvicorn создаст свой экземпляр
-face_processor = FaceProcessor(output_size=512)
+# face_fill_ratio=0.5 означает, что лицо займет 50% высоты (было 65%), больше места для волос
+face_processor = FaceProcessor(output_size=512, face_fill_ratio=0.5)
 
 @app.get("/")
 async def root():

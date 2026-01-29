@@ -24,13 +24,15 @@ except Exception:
     print("⚠️ pillow-heif не найден, HEIC/HEIF может не работать")
 
 class FaceProcessor:
-    def __init__(self, output_size: int = 512, face_fill_ratio: float = 0.65):
+    def __init__(self, output_size: int = 512, face_fill_ratio: float = 0.5):
         """
         Инициализация процессора лиц.
         
         Args:
             output_size: Размер выходного квадратного изображения (512x512)
-            face_fill_ratio: Доля высоты лица от общей высоты изображения (0.65 = 65%)
+            face_fill_ratio: Доля высоты лица от общей высоты изображения (0.5 = 50%, больше места для волос)
+                            Меньшее значение = больше пространства вокруг лица (волосы, плечи)
+                            Большее значение = лицо крупнее, меньше пространства вокруг
         """
         self.output_size = output_size
         self.face_fill_ratio = face_fill_ratio
@@ -68,6 +70,11 @@ class FaceProcessor:
         """
         Обрабатывает одно изображение: детектирует лицо, центрирует и обрезает.
         
+        Поддерживаемые форматы:
+        - OpenCV (быстро): JPEG, PNG, BMP, TIFF
+        - PIL (с плагинами): AVIF (pillow-avif-plugin), HEIC/HEIF (pillow-heif)
+        - PIL (встроенные): WebP, GIF, ICO, и другие форматы, поддерживаемые Pillow
+        
         Args:
             image_bytes: Байты изображения
             filename: Имя файла (для метаданных)
@@ -76,11 +83,11 @@ class FaceProcessor:
             Dict с ключами 'image' (PIL Image) и 'filename', или None если лицо не найдено
         """
         try:
-            # Сначала пробуем через OpenCV (быстрее для JPEG/PNG)
+            # Сначала пробуем через OpenCV (быстрее для JPEG/PNG/BMP/TIFF)
             nparr = np.frombuffer(image_bytes, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
-            # Если OpenCV не смог декодировать (например, AVIF, WebP), пробуем через PIL
+            # Если OpenCV не смог декодировать (AVIF, WebP, HEIC/HEIF и др.), пробуем через PIL
             if img is None:
                 try:
                     print(f"OpenCV не смог декодировать {filename}, пробуем через PIL...")
@@ -95,7 +102,14 @@ class FaceProcessor:
                         print(f"⚠️ Не удалось проверить поддержку AVIF в PIL")
                     
                     pil_img = Image.open(io.BytesIO(image_bytes))
-                    print(f"PIL успешно открыл {filename}, формат: {pil_img.format}, размер: {pil_img.size}, режим: {pil_img.mode}")
+                    format_name = pil_img.format or "UNKNOWN"
+                    print(f"✅ PIL успешно открыл {filename}, формат: {format_name}, размер: {pil_img.size}, режим: {pil_img.mode}")
+                    
+                    # Поддерживаемые форматы через PIL:
+                    # - AVIF (если установлен pillow-avif-plugin)
+                    # - HEIC/HEIF (если установлен pillow-heif)
+                    # - WebP (встроенная поддержка в Pillow)
+                    # - GIF, ICO, BMP, TIFF и другие стандартные форматы
                     
                     # Конвертируем в RGB если нужно
                     if pil_img.mode != 'RGB':
