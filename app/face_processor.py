@@ -152,41 +152,76 @@ class FaceProcessor:
             img_rgb = cv2.cvtColor(resized_img, cv2.COLOR_BGR2RGB)
             print(f"Изображение {filename} подготовлено для детекции: размер={img_rgb.shape}, тип={img_rgb.dtype}")
             
-            # Детекция лиц на уменьшенном изображении (сначала пробуем быструю модель)
-            detection_results = self.face_detection.process(img_rgb)
-            print(f"Быстрая модель для {filename}: найдено лиц = {len(detection_results.detections) if detection_results.detections else 0}")
+            # Улучшенная детекция: пробуем обе модели MediaPipe для лучшего результата
+            # Особенно важно для полупрофиля и сложных углов
+            all_detections = []
             
-            # Если не нашли лицо быстрой моделью, пробуем более точную модель (model_selection=1)
-            if not detection_results.detections or len(detection_results.detections) == 0:
-                print(f"Быстрая модель не нашла лицо, пробуем точную модель для {filename}")
-                # Создаем временный детектор с более точной моделью
-                accurate_detector = self.mp_face_detection.FaceDetection(
-                    model_selection=1,  # Более точная модель для дальних/сложных лиц
-                    min_detection_confidence=0.2  # Еще больше снижаем порог для лучшей детекции
-                )
-                detection_results = accurate_detector.process(img_rgb)
-                print(f"Точная модель для {filename}: найдено лиц = {len(detection_results.detections) if detection_results.detections else 0}")
-                accurate_detector.close()
+            # 1. Быстрая модель (model_selection=0) - хорошо для фронтальных лиц
+            fast_results = self.face_detection.process(img_rgb)
+            if fast_results.detections:
+                print(f"Быстрая модель для {filename}: найдено лиц = {len(fast_results.detections)}")
+                all_detections.extend(fast_results.detections)
             
-            if not detection_results.detections or len(detection_results.detections) == 0:
+            # 2. Точная модель (model_selection=1) - лучше для полупрофиля, дальних и сложных углов
+            accurate_detector = self.mp_face_detection.FaceDetection(
+                model_selection=1,  # Более точная модель для дальних/сложных лиц и полупрофиля
+                min_detection_confidence=0.3  # Сниженный порог для лучшей детекции полупрофиля
+            )
+            accurate_results = accurate_detector.process(img_rgb)
+            if accurate_results.detections:
+                print(f"Точная модель для {filename}: найдено лиц = {len(accurate_results.detections)}")
+                all_detections.extend(accurate_results.detections)
+            accurate_detector.close()
+            
+            if not all_detections:
                 print(f"❌ Лицо не найдено на изображении {filename} (размер: {img_rgb.shape})")
                 return None
             
-            # Выбор лучшего лица
-            best_detection = self._select_best_face_mediapipe(detection_results.detections, resized_img.shape)
+            # Убираем дубликаты (если обе модели нашли одно и то же лицо)
+            # Выбираем лучшее лицо из всех найденных
+            print(f"Всего найдено уникальных лиц: {len(all_detections)}")
+            best_detection = self._select_best_face_mediapipe(all_detections, resized_img.shape)
             
             if best_detection is None:
-                print(f"Не удалось выбрать лучшее лицо из {len(detection_results.detections)} найденных для {filename}")
+                print(f"Не удалось выбрать лучшее лицо из {len(all_detections)} найденных для {filename}")
                 return None
             
             # Получение landmarks через Face Mesh для более точного выравнивания
+            # Важно для полупрофиля - Face Mesh может найти landmarks даже когда детекция менее уверена
             mesh_results = self.face_mesh.process(img_rgb)
             landmarks = None
+            
+            # Пробуем найти landmarks для лучшего найденного лица
             if mesh_results.multi_face_landmarks:
-                landmarks = self._convert_landmarks_to_array(mesh_results.multi_face_landmarks[0], resized_img.shape)
+                # Если найдено несколько лиц, выбираем то, которое ближе к best_detection
+                best_landmarks_idx = 0
+                if len(mesh_results.multi_face_landmarks) > 1:
+                    # Находим ближайшее лицо по bbox
+                    best_bbox = best_detection.location_data.relative_bounding_box
+                    min_distance = float('inf')
+                    for idx, face_landmarks in enumerate(mesh_results.multi_face_landmarks):
+                        landmarks_array = self._convert_landmarks_to_array(face_landmarks, resized_img.shape)
+                        if len(landmarks_array) > 0:
+                            # Центр landmarks
+                            lm_center = np.mean(landmarks_array, axis=0)
+                            # Центр bbox
+                            bbox_center = np.array([
+                                (best_bbox.xmin + best_bbox.width / 2) * resized_img.shape[1],
+                                (best_bbox.ymin + best_bbox.height / 2) * resized_img.shape[0]
+                            ])
+                            distance = np.linalg.norm(lm_center - bbox_center)
+                            if distance < min_distance:
+                                min_distance = distance
+                                best_landmarks_idx = idx
+                
+                landmarks = self._convert_landmarks_to_array(
+                    mesh_results.multi_face_landmarks[best_landmarks_idx], 
+                    resized_img.shape
+                )
                 # Масштабируем landmarks обратно к оригинальному размеру
                 if resize_scale < 1.0:
                     landmarks = (landmarks / resize_scale).astype(np.int32)
+                print(f"✅ Найдены landmarks для {filename}: {len(landmarks)} точек")
             
             # Если landmarks не получены, используем bbox из detection
             if landmarks is None:
@@ -332,7 +367,7 @@ class FaceProcessor:
         return img
     
     def _select_best_face_mediapipe(self, detections, img_shape: Tuple[int, int, int]):
-        """Выбирает лучшее лицо из нескольких (MediaPipe)."""
+        """Выбирает лучшее лицо из нескольких (MediaPipe). Улучшено для полупрофиля."""
         if len(detections) == 1:
             return detections[0]
         
@@ -349,14 +384,25 @@ class FaceProcessor:
             face_height = bbox.height * h
             size_score = face_width * face_height
             
+            # Confidence score - очень важен для полупрофиля
+            confidence = detection.score[0]
+            
             # Центр лица
             face_center_x = (bbox.xmin + bbox.width / 2) * w
             face_center_y = (bbox.ymin + bbox.height / 2) * h
             distance = np.sqrt((face_center_x - img_center_x)**2 + (face_center_y - img_center_y)**2)
             center_score = 1.0 / (1.0 + distance / 100.0)
             
-            # Комбинированный score
-            score = size_score * detection.score[0] * center_score
+            # Проверка на валидность bbox (для полупрофиля может быть меньше, но это нормально)
+            bbox_validity = 1.0
+            if bbox.width < 0.05 or bbox.height < 0.05:  # Слишком маленькое лицо
+                bbox_validity = 0.5
+            if bbox.xmin < -0.1 or bbox.ymin < -0.1:  # Выходит за границы
+                bbox_validity = 0.7
+            
+            # Комбинированный score с большим весом на confidence (важно для полупрофиля)
+            # confidence^2 дает больше веса высоким confidence значениям
+            score = size_score * (confidence ** 1.5) * center_score * bbox_validity
             
             if score > best_score:
                 best_score = score
@@ -450,11 +496,25 @@ class FaceProcessor:
             # Вычисление угла поворота
             dy = right_eye_center[1] - left_eye_center[1]
             dx = right_eye_center[0] - left_eye_center[0]
-            angle = np.degrees(np.arctan2(dy, dx))
-            rotation_angle = angle
+            
+            # Проверка валидности: для полупрофиля расстояние между глазами может быть меньше
+            eye_distance = np.sqrt(dx**2 + dy**2)
+            img_diagonal = np.sqrt(img.shape[0]**2 + img.shape[1]**2)
+            
+            # Если глаза слишком близко (возможно полупрофиль или ошибка детекции), будем консервативнее
+            if eye_distance < img_diagonal * 0.05:  # Меньше 5% диагонали - подозрительно
+                print(f"⚠️ Подозрительно маленькое расстояние между глазами ({eye_distance:.1f}px), возможно полупрофиль")
+                # Для полупрофиля делаем более мягкое выравнивание
+                angle = np.degrees(np.arctan2(dy, dx))
+                rotation_angle = angle * 0.7  # Уменьшаем угол поворота на 30%
+            else:
+                angle = np.degrees(np.arctan2(dy, dx))
+                rotation_angle = angle
             
             # Поворот если угол значительный (> 2 градуса)
-            if abs(angle) > 2:
+            # Для полупрофиля ограничиваем максимальный угол поворота до 15 градусов
+            max_rotation = 15.0 if eye_distance < img_diagonal * 0.08 else 45.0
+            if abs(rotation_angle) > 2 and abs(rotation_angle) < max_rotation:
                 center = (img.shape[1] // 2, img.shape[0] // 2)
                 M = cv2.getRotationMatrix2D(center, angle, 1.0)
                 img = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), 
