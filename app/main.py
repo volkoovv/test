@@ -507,7 +507,10 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
                 )
         
         if not processed:
-            raise HTTPException(status_code=400, detail="No faces detected in any image")
+            raise HTTPException(
+                status_code=400, 
+                detail="Не удалось найти лица ни на одном изображении. Убедитесь, что на фотографиях четко видно лицо человека."
+            )
 
         total_time = time.time() - start_time
         print(f"✅ Обработано {len(processed)} файлов за {total_time:.2f}с (среднее: {total_time/len(processed):.2f}с на файл)")
@@ -539,4 +542,10 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
+        print(f"❌ Критическая ошибка обработки: {type(e).__name__}: {e}")
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Ошибка обработки изображений. Попробуйте загрузить файлы снова или используйте другой формат (JPEG, PNG, HEIC, AVIF)."
+        )
