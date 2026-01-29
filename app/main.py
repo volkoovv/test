@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, Response, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import zipfile
 import io
@@ -12,7 +13,18 @@ from app.face_processor import FaceProcessor
 
 app = FastAPI(title="Face Crop Microservice", version="1.0.0")
 
+# Настройка CORS для работы с разных устройств
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=3600,
+)
+
 # Инициализация процессора лиц (CPU)
+# Каждый воркер uvicorn создаст свой экземпляр
 face_processor = FaceProcessor(output_size=512)
 
 @app.get("/")
