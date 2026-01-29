@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
-    libavif0 \
+    libavif16 \
     libavif-bin \
     && rm -rf /var/lib/apt/lists/*
 
