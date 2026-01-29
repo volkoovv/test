@@ -479,10 +479,6 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
         start_time = time.time()
         processed = []
         for idx, file in enumerate(files):
-            # Проверка типа файла
-            if not file.content_type or not file.content_type.startswith('image/'):
-                continue
-            
             # Чтение файла
             file_start = time.time()
             contents = await file.read()
@@ -490,7 +486,11 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
             
             # Обработка лица
             process_start = time.time()
-            result = face_processor.process_image(contents, file.filename or f"image_{idx}.jpg")
+            filename = file.filename or f"image_{idx}"
+            # На мобилках (особенно iOS/Safari) content-type может быть пустым или application/octet-stream.
+            # Поэтому НЕ фильтруем по content_type — пробуем декодировать по фактическим байтам.
+            print(f"Входной файл {idx+1}: name={filename!r}, content_type={file.content_type!r}, bytes={len(contents)}")
+            result = face_processor.process_image(contents, filename)
             process_time = time.time() - process_start
             
             print(f"Файл {idx+1}: чтение={read_time:.2f}с, обработка={process_time:.2f}с")

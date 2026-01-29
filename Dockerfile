@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libavif16 \
     libavif-bin \
+    libheif1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Копирование requirements

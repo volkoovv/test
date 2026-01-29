@@ -13,6 +13,16 @@ try:
 except ImportError:
     print("⚠️ pillow-avif-plugin не найден, AVIF может не работать")
 
+# Регистрируем поддержку HEIC/HEIF (часто с iPhone) через pillow-heif
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    print("✅ pillow-heif загружен, HEIC/HEIF поддерживается")
+except Exception:
+    # Не падаем, если pillow-heif не установлен
+    print("⚠️ pillow-heif не найден, HEIC/HEIF может не работать")
+
 class FaceProcessor:
     def __init__(self, output_size: int = 512, face_fill_ratio: float = 0.65):
         """
