@@ -21,18 +21,31 @@ class FaceProcessor:
         # Инициализация MediaPipe Face Detection (CPU-оптимизированный, быстрый)
         self.mp_face_detection = mp.solutions.face_detection
         self.mp_face_mesh = mp.solutions.face_mesh
+        
+        # Используем более быструю модель (model_selection=0) для лучшей производительности
         self.face_detection = self.mp_face_detection.FaceDetection(
-            model_selection=1,  # 0 для ближних лиц, 1 для дальних (лучше качество)
-            min_detection_confidence=0.5
-        )
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            static_image_mode=True,
-            max_num_faces=1,
-            refine_landmarks=True,
+            model_selection=0,  # 0 для ближних лиц (быстрее), 1 для дальних (медленнее)
             min_detection_confidence=0.5
         )
         
-        print("FaceProcessor initialized successfully (MediaPipe)")
+        # Отключаем refine_landmarks для ускорения (можно включить если нужна большая точность)
+        self.face_mesh = self.mp_face_mesh.FaceMesh(
+            static_image_mode=True,
+            max_num_faces=1,
+            refine_landmarks=False,  # Отключено для ускорения
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+        
+        # Предзагрузка моделей - создаем тестовое изображение для "прогрева"
+        print("FaceProcessor: предзагрузка моделей MediaPipe...")
+        try:
+            dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+            self.face_detection.process(dummy_img)
+            self.face_mesh.process(dummy_img)
+            print("FaceProcessor initialized successfully (MediaPipe) - модели предзагружены")
+        except Exception as e:
+            print(f"FaceProcessor initialized (MediaPipe) - предзагрузка пропущена: {e}")
     
     def process_image(self, image_bytes: bytes, filename: str) -> Optional[Dict]:
         """

@@ -6,6 +6,7 @@ import io
 import os
 import tempfile
 import shutil
+import time
 
 from app.face_processor import FaceProcessor
 
@@ -345,6 +346,7 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
     background_tasks.add_task(_cleanup_dir, temp_dir)
     
     try:
+        start_time = time.time()
         processed = []
         for idx, file in enumerate(files):
             # Проверка типа файла
@@ -352,10 +354,16 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
                 continue
             
             # Чтение файла
+            file_start = time.time()
             contents = await file.read()
+            read_time = time.time() - file_start
             
             # Обработка лица
+            process_start = time.time()
             result = face_processor.process_image(contents, file.filename or f"image_{idx}.jpg")
+            process_time = time.time() - process_start
+            
+            print(f"Файл {idx+1}: чтение={read_time:.2f}с, обработка={process_time:.2f}с")
             
             if result:
                 output_path = os.path.join(temp_dir, f"cropped_{idx}_{result['filename']}")
@@ -369,6 +377,9 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
         
         if not processed:
             raise HTTPException(status_code=400, detail="No faces detected in any image")
+
+        total_time = time.time() - start_time
+        print(f"✅ Обработано {len(processed)} файлов за {total_time:.2f}с (среднее: {total_time/len(processed):.2f}с на файл)")
 
         # Если один файл — возвращаем PNG напрямую (без zip)
         if len(processed) == 1:
