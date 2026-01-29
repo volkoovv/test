@@ -69,15 +69,41 @@ async def root():
     .loader-text { color: #6b7280; font-size: 14px; }
     
     @media (max-width: 640px) {
-      body { padding: 12px; }
-      h2 { font-size: 20px; }
+      body { padding: 12px; font-size: 14px; }
+      h2 { font-size: 20px; margin-bottom: 8px; }
+      .muted { font-size: 13px; line-height: 1.4; }
       .card { padding: 12px; }
-      .row { gap: 8px; }
-      button { padding: 12px 16px; font-size: 15px; width: 100%; }
-      .file-input-button { padding: 12px 16px; font-size: 15px; }
+      .row { gap: 8px; flex-direction: column; }
+      button { padding: 14px 16px; font-size: 15px; width: 100%; }
+      .file-input-button { padding: 14px 16px; font-size: 15px; }
       .grid { grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap: 8px; }
+      .thumb { padding: 6px; }
       .thumb-img-wrapper { height: 150px; }
-      .modal-close { top: 5px; right: 10px; font-size: 40px; width: 44px; height: 44px; }
+      .thumb-name { font-size: 11px; margin-top: 6px; }
+      .thumb-remove { width: 28px; height: 28px; min-width: 28px; min-height: 28px; font-size: 18px; top: 4px; right: 4px; }
+      .modal-close { top: 5px; right: 10px; font-size: 36px; width: 44px; height: 44px; }
+      .loader-text { font-size: 13px; }
+      .err { font-size: 13px; }
+      .ok { font-size: 15px; }
+      .link { font-size: 15px; }
+      .result-previews-title { font-size: 15px; }
+    }
+    
+    /* Оптимизация производительности для мобильных */
+    @media (max-width: 640px) {
+      .thumb-img-wrapper, .thumb img, .modal-content {
+        will-change: transform;
+        transform: translateZ(0);
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+      }
+    }
+    
+    /* Предотвращение двойного тапа для зума на iOS */
+    @media (max-width: 640px) {
+      * { touch-action: manipulation; }
+      img { pointer-events: none; }
+      .thumb-img-wrapper { pointer-events: auto; }
     }
   </style>
 </head>
@@ -89,7 +115,7 @@ async def root():
     <div class="card">
       <div class="row">
         <div class="file-input-wrapper">
-          <input id="files" type="file" accept="image/*" multiple capture="environment" />
+          <input id="files" type="file" accept="image/*" multiple />
           <label for="files" class="file-input-button">
             <span class="file-input-icon">📁</span>
             <span>Выбрать файлы</span>
@@ -179,10 +205,20 @@ async def root():
     function openModal(imgSrc) {
       elModalImg.src = imgSrc;
       elModal.style.display = 'block';
+      // Предотвращаем скролл фона на мобильных
+      document.body.style.overflow = 'hidden';
+      // Блокируем скролл на iOS
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
     }
 
     function closeModal() {
       elModal.style.display = 'none';
+      elModalImg.src = '';
+      // Восстанавливаем скролл
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
     }
 
     elModalClose.addEventListener('click', (e) => {
@@ -208,11 +244,16 @@ async def root():
       if (e.key === 'Escape') closeModal();
     });
 
-    elReset.addEventListener('click', resetAll);
-    elReset.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      resetAll();
-    });
+    // Единый обработчик для клика и касания (предотвращает двойное срабатывание)
+    function handleInteraction(e, callback) {
+      if (e.type === 'touchend') {
+        e.preventDefault();
+      }
+      callback();
+    }
+    
+    elReset.addEventListener('click', (e) => handleInteraction(e, resetAll));
+    elReset.addEventListener('touchend', (e) => handleInteraction(e, resetAll));
 
     function renderPreviews(files) {
       clearPreviews();
@@ -223,25 +264,23 @@ async def root():
         div.innerHTML = `
           <button class="thumb-remove" data-index="${index}" title="Удалить">×</button>
           <div class="thumb-img-wrapper">
-            <img src="${url}" alt="preview"/>
+            <img loading="lazy" src="${url}" alt="preview" decoding="async"/>
           </div>
           <div class="thumb-name">${f.name}</div>
         `;
         const imgWrapper = div.querySelector('.thumb-img-wrapper');
-        imgWrapper.addEventListener('click', () => openModal(url));
-        imgWrapper.addEventListener('touchend', (e) => {
-          e.preventDefault();
-          openModal(url);
-        });
+        // Единый обработчик для клика и касания
+        imgWrapper.addEventListener('click', (e) => handleInteraction(e, () => openModal(url)));
+        imgWrapper.addEventListener('touchend', (e) => handleInteraction(e, () => openModal(url)));
+        
         const removeBtn = div.querySelector('.thumb-remove');
         removeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          removeFile(index);
+          handleInteraction(e, () => removeFile(index));
         });
         removeBtn.addEventListener('touchend', (e) => {
-          e.preventDefault();
           e.stopPropagation();
-          removeFile(index);
+          handleInteraction(e, () => removeFile(index));
         });
         elPreviews.appendChild(div);
       });
@@ -259,15 +298,13 @@ async def root():
         div.className = 'thumb';
         div.innerHTML = `
           <div class="thumb-img-wrapper">
-            <img src="${url}" alt="result ${idx + 1}"/>
+            <img loading="lazy" src="${url}" alt="result ${idx + 1}" decoding="async"/>
           </div>
           <div class="thumb-name">${imgData.filename}</div>
         `;
-        div.addEventListener('click', () => openModal(url));
-        div.addEventListener('touchend', (e) => {
-          e.preventDefault();
-          openModal(url);
-        });
+        // Единый обработчик для клика и касания
+        div.addEventListener('click', (e) => handleInteraction(e, () => openModal(url)));
+        div.addEventListener('touchend', (e) => handleInteraction(e, () => openModal(url)));
         grid.appendChild(div);
       });
       
@@ -302,11 +339,22 @@ async def root():
       clearResult();
       try {
         if (elFiles.files?.length) {
+          // Проверка размера файлов (максимум 10MB на файл)
+          const maxFileSize = 10 * 1024 * 1024; // 10MB
+          const newFiles = Array.from(elFiles.files).filter(file => {
+            if (file.size > maxFileSize) {
+              setError(`Файл "${file.name}" слишком большой (макс. 10MB). Пропущен.`);
+              return false;
+            }
+            return true;
+          });
+          
           // Добавляем новые файлы в массив (максимум 5 всего)
-          const newFiles = Array.from(elFiles.files);
           selectedFiles = [...selectedFiles, ...newFiles].slice(0, 5);
-          renderPreviews(selectedFiles);
-          updateUI();
+          if (selectedFiles.length > 0) {
+            renderPreviews(selectedFiles);
+            updateUI();
+          }
         }
       } catch (err) {
         console.error('Error handling file selection:', err);
