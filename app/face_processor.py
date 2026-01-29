@@ -59,12 +59,25 @@ class FaceProcessor:
             Dict с ключами 'image' (PIL Image) и 'filename', или None если лицо не найдено
         """
         try:
-            # Конвертация байтов в numpy array
+            # Сначала пробуем через OpenCV (быстрее для JPEG/PNG)
             nparr = np.frombuffer(image_bytes, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
+            # Если OpenCV не смог декодировать (например, AVIF, WebP), пробуем через PIL
             if img is None:
-                return None
+                try:
+                    pil_img = Image.open(io.BytesIO(image_bytes))
+                    # Конвертируем в RGB если нужно
+                    if pil_img.mode != 'RGB':
+                        pil_img = pil_img.convert('RGB')
+                    # Конвертируем PIL в numpy array (RGB)
+                    img_rgb = np.array(pil_img)
+                    # Конвертируем RGB в BGR для OpenCV
+                    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+                    print(f"Изображение декодировано через PIL: {filename}")
+                except Exception as e:
+                    print(f"Ошибка декодирования изображения {filename}: {e}")
+                    return None
             
             # Исправление ориентации по EXIF
             img = self._fix_orientation(img, image_bytes)
@@ -89,16 +102,29 @@ class FaceProcessor:
             # Конвертация BGR в RGB для MediaPipe
             img_rgb = cv2.cvtColor(resized_img, cv2.COLOR_BGR2RGB)
             
-            # Детекция лиц на уменьшенном изображении
+            # Детекция лиц на уменьшенном изображении (сначала пробуем быструю модель)
             detection_results = self.face_detection.process(img_rgb)
             
+            # Если не нашли лицо быстрой моделью, пробуем более точную модель (model_selection=1)
             if not detection_results.detections or len(detection_results.detections) == 0:
+                print(f"Быстрая модель не нашла лицо, пробуем точную модель для {filename}")
+                # Создаем временный детектор с более точной моделью
+                accurate_detector = self.mp_face_detection.FaceDetection(
+                    model_selection=1,  # Более точная модель для дальних/сложных лиц
+                    min_detection_confidence=0.3  # Снижаем порог для лучшей детекции
+                )
+                detection_results = accurate_detector.process(img_rgb)
+                accurate_detector.close()
+            
+            if not detection_results.detections or len(detection_results.detections) == 0:
+                print(f"Лицо не найдено на изображении {filename}")
                 return None
             
             # Выбор лучшего лица
             best_detection = self._select_best_face_mediapipe(detection_results.detections, resized_img.shape)
             
             if best_detection is None:
+                print(f"Не удалось выбрать лучшее лицо из {len(detection_results.detections)} найденных для {filename}")
                 return None
             
             # Получение landmarks через Face Mesh для более точного выравнивания
@@ -226,17 +252,29 @@ class FaceProcessor:
         """Исправляет ориентацию изображения по EXIF данным."""
         try:
             pil_img = Image.open(io.BytesIO(image_bytes))
-            if hasattr(pil_img, '_getexif') and pil_img._getexif() is not None:
-                exif = pil_img._getexif()
-                orientation = exif.get(274)  # EXIF orientation tag
-                
-                if orientation == 3:
-                    img = cv2.rotate(img, cv2.ROTATE_180)
-                elif orientation == 6:
-                    img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                elif orientation == 8:
-                    img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-        except:
+            # Используем ImageOps.exif_transpose для автоматической коррекции ориентации
+            # Это работает с современными форматами (AVIF, WebP) и старыми (JPEG)
+            try:
+                from PIL import ImageOps
+                pil_img = ImageOps.exif_transpose(pil_img)
+                # Конвертируем обратно в numpy array (RGB -> BGR для OpenCV)
+                img_rgb = np.array(pil_img)
+                if len(img_rgb.shape) == 3:
+                    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+            except ImportError:
+                # Fallback на старый метод для старых версий PIL
+                if hasattr(pil_img, '_getexif') and pil_img._getexif() is not None:
+                    exif = pil_img._getexif()
+                    orientation = exif.get(274)  # EXIF orientation tag
+                    
+                    if orientation == 3:
+                        img = cv2.rotate(img, cv2.ROTATE_180)
+                    elif orientation == 6:
+                        img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                    elif orientation == 8:
+                        img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        except Exception as e:
+            # Если не удалось исправить ориентацию, продолжаем с оригинальным изображением
             pass
         
         return img
