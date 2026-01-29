@@ -69,17 +69,34 @@ class FaceProcessor:
             # Исправление ориентации по EXIF
             img = self._fix_orientation(img, image_bytes)
             
-            # Конвертация BGR в RGB для MediaPipe
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            # Сохраняем оригинальное изображение для финального кропа
+            original_img = img.copy()
+            original_h, original_w = img.shape[:2]
             
-            # Детекция лиц
+            # Оптимизация: уменьшаем размер больших изображений для ускорения обработки MediaPipe
+            # MediaPipe хорошо работает с изображениями до 1920px, большие можно уменьшить
+            resize_scale = 1.0
+            max_dimension = 1920
+            h, w = img.shape[:2]
+            if max(h, w) > max_dimension:
+                resize_scale = max_dimension / max(h, w)
+                new_w = int(w * resize_scale)
+                new_h = int(h * resize_scale)
+                resized_img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            else:
+                resized_img = img
+            
+            # Конвертация BGR в RGB для MediaPipe
+            img_rgb = cv2.cvtColor(resized_img, cv2.COLOR_BGR2RGB)
+            
+            # Детекция лиц на уменьшенном изображении
             detection_results = self.face_detection.process(img_rgb)
             
             if not detection_results.detections or len(detection_results.detections) == 0:
                 return None
             
             # Выбор лучшего лица
-            best_detection = self._select_best_face_mediapipe(detection_results.detections, img.shape)
+            best_detection = self._select_best_face_mediapipe(detection_results.detections, resized_img.shape)
             
             if best_detection is None:
                 return None
@@ -88,21 +105,32 @@ class FaceProcessor:
             mesh_results = self.face_mesh.process(img_rgb)
             landmarks = None
             if mesh_results.multi_face_landmarks:
-                landmarks = self._convert_landmarks_to_array(mesh_results.multi_face_landmarks[0], img.shape)
+                landmarks = self._convert_landmarks_to_array(mesh_results.multi_face_landmarks[0], resized_img.shape)
+                # Масштабируем landmarks обратно к оригинальному размеру
+                if resize_scale < 1.0:
+                    landmarks = (landmarks / resize_scale).astype(np.int32)
             
             # Если landmarks не получены, используем bbox из detection
             if landmarks is None:
                 bbox = best_detection.location_data.relative_bounding_box
-                h, w = img.shape[:2]
-                landmarks = self._bbox_to_landmarks(bbox, w, h)
+                resized_h, resized_w = resized_img.shape[:2]
+                landmarks = self._bbox_to_landmarks(bbox, resized_w, resized_h)
+                # Масштабируем landmarks обратно к оригинальному размеру
+                if resize_scale < 1.0:
+                    landmarks = (landmarks / resize_scale).astype(np.int32)
             
-            # Получение bbox из detection
+            # Получение bbox из detection и масштабирование к оригинальному размеру
             bbox = best_detection.location_data.relative_bounding_box
+            resized_h, resized_w = resized_img.shape[:2]
+            face_x = int(bbox.xmin * original_w)
+            face_y = int(bbox.ymin * original_h)
+            face_width = int(bbox.width * original_w)
+            face_height = int(bbox.height * original_h)
+            
+            # Используем оригинальное изображение для дальнейшей обработки
+            img = original_img
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             h, w = img.shape[:2]
-            face_x = int(bbox.xmin * w)
-            face_y = int(bbox.ymin * h)
-            face_width = int(bbox.width * w)
-            face_height = int(bbox.height * h)
             
             # Вычисление центра лица и размера
             # Используем landmarks для более точного центрирования, если доступны
@@ -128,18 +156,18 @@ class FaceProcessor:
             min_face_size = 40
             if face_size < min_face_size:
                 # Попытка увеличить масштаб
-                scale_factor = min_face_size / face_size
-                if scale_factor > 3.0:  # Слишком большое увеличение = плохое качество
+                upscale_factor = min_face_size / face_size
+                if upscale_factor > 3.0:  # Слишком большое увеличение = плохое качество
                     return None
-                img_rgb = cv2.resize(img_rgb, None, fx=scale_factor, fy=scale_factor)
+                img_rgb = cv2.resize(img_rgb, None, fx=upscale_factor, fy=upscale_factor)
                 img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
                 h, w = img.shape[:2]
-                face_center_x = int(face_center_x * scale_factor)
-                face_center_y = int(face_center_y * scale_factor)
-                face_size = face_size * scale_factor
+                face_center_x = int(face_center_x * upscale_factor)
+                face_center_y = int(face_center_y * upscale_factor)
+                face_size = face_size * upscale_factor
                 # Пересчитываем landmarks если они есть
                 if landmarks is not None:
-                    landmarks = (landmarks * scale_factor).astype(np.int32)
+                    landmarks = (landmarks * upscale_factor).astype(np.int32)
             
             # Выравнивание по глазам (если есть landmarks)
             aligned_img, rotation_angle = self._align_face(img, landmarks)

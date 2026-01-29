@@ -62,6 +62,11 @@ async def root():
     .link { color: #1d4ed8; }
     .result-previews { margin-top: 16px; }
     .result-previews-title { font-weight: 500; margin-bottom: 12px; color: #374151; }
+    .loader { display: none; margin: 20px auto; text-align: center; }
+    .loader.active { display: block; }
+    .spinner { border: 4px solid #f3f4f6; border-top: 4px solid #1d4ed8; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 12px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .loader-text { color: #6b7280; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -85,6 +90,10 @@ async def root():
       <div id="previews" class="grid"></div>
 
       <div class="out">
+        <div id="loader" class="loader">
+          <div class="spinner"></div>
+          <div class="loader-text">Обрабатываю изображения...</div>
+        </div>
         <div id="result"></div>
         <div id="error" class="err"></div>
       </div>
@@ -105,6 +114,7 @@ async def root():
     const elPreviews = document.getElementById('previews');
     const elResult = document.getElementById('result');
     const elError = document.getElementById('error');
+    const elLoader = document.getElementById('loader');
     const elModal = document.getElementById('modal');
     const elModalImg = document.getElementById('modal-img');
     const elModalClose = document.querySelector('.modal-close');
@@ -117,6 +127,8 @@ async def root():
     function setError(s) { elError.textContent = s || ''; }
     function clearResult() { elResult.innerHTML = ''; }
     function clearPreviews() { elPreviews.innerHTML = ''; }
+    function showLoader() { elLoader.classList.add('active'); }
+    function hideLoader() { elLoader.classList.remove('active'); }
 
     function updateUI() {
       const hasFiles = selectedFiles.length > 0;
@@ -259,12 +271,14 @@ async def root():
       if (selectedFiles.length > 5) { setError('Максимум 5 файлов.'); return; }
 
       elRun.disabled = true;
-      setStatus('Загружаю и обрабатываю…');
+      setStatus('');
+      showLoader();
 
       const fd = new FormData();
       selectedFiles.forEach(f => fd.append('files', f, f.name));
 
       try {
+        const startTime = Date.now();
         const resp = await fetch('/v1/face-crop', { method: 'POST', body: fd });
         const ct = (resp.headers.get('content-type') || '').toLowerCase();
 
@@ -308,6 +322,7 @@ async def root():
       } catch (e) {
         setError(String(e?.message || e));
       } finally {
+        hideLoader();
         elRun.disabled = false;
         setStatus('');
       }
