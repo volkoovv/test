@@ -451,9 +451,10 @@ async def health():
 
 
 def _output_filename(original: str, idx: int) -> str:
-    """Имя для сохранения: оригинальное имя + _512x512.png (только ASCII)."""
+    """Имя для сохранения: оригинальное имя + _512x512.png (только ASCII для HTTP-заголовков)."""
     stem = Path(original).stem if original else f"image_{idx}"
-    stem = re.sub(r"[^\w\-]", "_", stem)[:200]  # безопасно для заголовков
+    stem = re.sub(r"[^a-zA-Z0-9_\-]", "_", stem)[:200]  # только ASCII, иначе latin-1 падает
+    stem = stem.strip("_") or f"image_{idx}"
     return f"{stem}_512x512.png"
 
 
