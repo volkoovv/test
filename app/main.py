@@ -415,7 +415,7 @@ async def root():
           let downloadName = 'face_512.png';
           const cd = resp.headers.get('Content-Disposition');
           if (cd) {
-            const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i) || cd.match(/filename=["']?([^"';]+)["']?/i);
+            const m = cd.match(/filename\\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i) || cd.match(/filename=["']?([^"';]+)["']?/i);
             if (m && m[1]) downloadName = m[1].trim();
           }
           if (ct.includes('image/png')) {
@@ -542,10 +542,13 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Критическая ошибка обработки: {type(e).__name__}: {e}")
         import traceback
+        err_msg = f"{type(e).__name__}: {e}"
+        print(f"❌ Критическая ошибка обработки: {err_msg}")
         print(traceback.format_exc())
+        # Показываем пользователю реальную причину (без путей и стека)
+        safe_detail = err_msg[:200].replace("\n", " ")
         raise HTTPException(
-            status_code=500, 
-            detail=f"Ошибка обработки изображений. Попробуйте загрузить файлы снова или используйте другой формат (JPEG, PNG, HEIC, AVIF)."
+            status_code=500,
+            detail=f"Ошибка обработки изображений: {safe_detail}. Попробуйте другой формат (JPEG, PNG, HEIC, AVIF) или другой файл."
         )

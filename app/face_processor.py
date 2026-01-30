@@ -128,6 +128,18 @@ class FaceProcessor:
                     print(traceback.format_exc())
                     return None
             
+            # Проверка: пустое или нулевой размер
+            if img is None or img.size == 0:
+                print(f"❌ Изображение {filename}: пустое или не декодировалось")
+                return None
+            h, w = img.shape[:2]
+            if h < 1 or w < 1:
+                print(f"❌ Изображение {filename}: некорректный размер {w}x{h}")
+                return None
+            # Всегда 3 канала BGR для дальнейшей обработки (grayscale -> BGR)
+            if len(img.shape) == 2:
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            
             # Исправление ориентации по EXIF
             img = self._fix_orientation(img, image_bytes)
             
@@ -339,31 +351,22 @@ class FaceProcessor:
         """Исправляет ориентацию изображения по EXIF данным."""
         try:
             pil_img = Image.open(io.BytesIO(image_bytes))
-            # Используем ImageOps.exif_transpose для автоматической коррекции ориентации
-            # Это работает с современными форматами (AVIF, WebP) и старыми (JPEG)
             try:
                 from PIL import ImageOps
                 pil_img = ImageOps.exif_transpose(pil_img)
-                # Конвертируем обратно в numpy array (RGB -> BGR для OpenCV)
-                img_rgb = np.array(pil_img)
-                if len(img_rgb.shape) == 3:
-                    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-            except ImportError:
-                # Fallback на старый метод для старых версий PIL
-                if hasattr(pil_img, '_getexif') and pil_img._getexif() is not None:
-                    exif = pil_img._getexif()
-                    orientation = exif.get(274)  # EXIF orientation tag
-                    
-                    if orientation == 3:
-                        img = cv2.rotate(img, cv2.ROTATE_180)
-                    elif orientation == 6:
-                        img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    elif orientation == 8:
-                        img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-        except Exception as e:
-            # Если не удалось исправить ориентацию, продолжаем с оригинальным изображением
+            except Exception:
+                pass
+            # Конвертируем в numpy (RGB/RGBA/grayscale) и в BGR для OpenCV
+            arr = np.array(pil_img)
+            if len(arr.shape) == 3 and arr.shape[2] == 3:
+                img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            elif len(arr.shape) == 3 and arr.shape[2] == 4:
+                img = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+            elif len(arr.shape) == 2:
+                img = cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
+            # иначе оставляем переданный img
+        except Exception:
             pass
-        
         return img
     
     def _select_best_face_mediapipe(self, detections, img_shape: Tuple[int, int, int]):
