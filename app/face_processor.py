@@ -316,18 +316,19 @@ class FaceProcessor:
             scale = target_face_height / face_size
             
             # Минимальный масштаб, при котором квадрат output_size×output_size помещается
-            # в кадр без белых полей (увеличиваем лицо в кадре вместо padding)
+            # в кадр без белых полей. Учитываем сдвиг кропа вверх (больше причёски).
             h_img, w_img = img.shape[0], img.shape[1]
             half = self.output_size // 2
+            crop_shift_up = int(0.08 * self.output_size)  # центр кропа выше лица — больше волос в кадре
             scale_min = 0.0
             if face_center_x > 1:
                 scale_min = max(scale_min, (half + 1) / face_center_x)
             if face_center_y > 1:
-                scale_min = max(scale_min, (half + 1) / face_center_y)
+                scale_min = max(scale_min, (half + 1 + crop_shift_up) / face_center_y)  # сверху нужен запас под волосы
             if w_img - face_center_x > 1:
                 scale_min = max(scale_min, (half + 1) / (w_img - face_center_x))
             if h_img - face_center_y > 1:
-                scale_min = max(scale_min, (half + 1) / (h_img - face_center_y))
+                scale_min = max(scale_min, (half + 1 - crop_shift_up) / (h_img - face_center_y))  # снизу режем больше
             if w_img > 0:
                 scale_min = max(scale_min, self.output_size / w_img)
             if h_img > 0:
@@ -343,12 +344,15 @@ class FaceProcessor:
             scaled_center_x = int(face_center_x * scale)
             scaled_center_y = int(face_center_y * scale)
             
-            # Кроп квадрата вокруг центра лица (теперь всегда внутри кадра, без padding)
+            # Центр кропа выше центра лица — в кадре больше причёски, меньше шеи
+            crop_center_y = scaled_center_y - crop_shift_up
+            
+            # Кроп квадрата вокруг смещённого центра (больше волос, меньше шеи)
             half_size = self.output_size // 2
             x1 = scaled_center_x - half_size
-            y1 = scaled_center_y - half_size
+            y1 = crop_center_y - half_size
             x2 = scaled_center_x + half_size
-            y2 = scaled_center_y + half_size
+            y2 = crop_center_y + half_size
             
             # Кроп без белых полей (если вылезает за край — уже учтено через scale_min)
             padded_img = self._crop_with_padding(scaled_img, x1, y1, x2, y2)
