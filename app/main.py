@@ -165,7 +165,6 @@ async def root():
     <img id="modal-img" class="modal-content" alt="Full size preview" />
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script>
     const elFiles = document.getElementById('files');
     const elRun = document.getElementById('run');
@@ -308,17 +307,19 @@ async def root():
       });
     }
 
-    async function downloadAllAsZip(images) {
-      if (typeof JSZip === 'undefined') { alert('Загрузка библиотеки…'); return; }
-      const zip = new JSZip();
-      images.forEach((img) => zip.file(img.filename || 'image.png', img.blob));
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'cropped_faces_512x512.zip';
-      a.click();
-      URL.revokeObjectURL(url);
+    function downloadAllAsFiles(images) {
+      images.forEach((img, i) => {
+        setTimeout(() => {
+          const url = URL.createObjectURL(img.blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = img.filename || 'image_' + (i + 1) + '.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, i * 150);
+      });
     }
 
     function renderResultPreviews(images) {
@@ -333,7 +334,7 @@ async def root():
         saveAllBtn.type = 'button';
         saveAllBtn.className = 'btn-save btn-save-all';
         saveAllBtn.textContent = 'Сохранить все';
-        saveAllBtn.onclick = () => downloadAllAsZip(images);
+        saveAllBtn.onclick = () => downloadAllAsFiles(images);
         saveAllWrap.appendChild(saveAllBtn);
         container.insertBefore(saveAllWrap, grid);
       }
