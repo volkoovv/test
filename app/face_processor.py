@@ -311,9 +311,28 @@ class FaceProcessor:
                 face_center_x = int(center[0] + dx * cos_a - dy * sin_a)
                 face_center_y = int(center[1] + dx * sin_a + dy * cos_a)
             
-            # Вычисление масштаба для нормализации размера лица
+            # Масштаб по face_fill_ratio (какой долей кадра занимает лицо)
             target_face_height = self.output_size * self.face_fill_ratio
             scale = target_face_height / face_size
+            
+            # Минимальный масштаб, при котором квадрат output_size×output_size помещается
+            # в кадр без белых полей (увеличиваем лицо в кадре вместо padding)
+            h_img, w_img = img.shape[0], img.shape[1]
+            half = self.output_size // 2
+            scale_min = 0.0
+            if face_center_x > 1:
+                scale_min = max(scale_min, (half + 1) / face_center_x)
+            if face_center_y > 1:
+                scale_min = max(scale_min, (half + 1) / face_center_y)
+            if w_img - face_center_x > 1:
+                scale_min = max(scale_min, (half + 1) / (w_img - face_center_x))
+            if h_img - face_center_y > 1:
+                scale_min = max(scale_min, (half + 1) / (h_img - face_center_y))
+            if w_img > 0:
+                scale_min = max(scale_min, self.output_size / w_img)
+            if h_img > 0:
+                scale_min = max(scale_min, self.output_size / h_img)
+            scale = max(scale, scale_min)
             
             # Новый размер изображения после масштабирования
             new_width = int(img.shape[1] * scale)
@@ -324,14 +343,14 @@ class FaceProcessor:
             scaled_center_x = int(face_center_x * scale)
             scaled_center_y = int(face_center_y * scale)
             
-            # Кроп квадрата вокруг центра лица
+            # Кроп квадрата вокруг центра лица (теперь всегда внутри кадра, без padding)
             half_size = self.output_size // 2
             x1 = scaled_center_x - half_size
             y1 = scaled_center_y - half_size
             x2 = scaled_center_x + half_size
             y2 = scaled_center_y + half_size
             
-            # Обработка границ (padding если выходит за края)
+            # Кроп без белых полей (если вылезает за край — уже учтено через scale_min)
             padded_img = self._crop_with_padding(scaled_img, x1, y1, x2, y2)
             
             # Конвертация в PIL Image
