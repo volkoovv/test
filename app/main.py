@@ -1,13 +1,15 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, Response, HTMLResponse
+from fastapi.responses import FileResponse, Response, HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
-import zipfile
+import base64
 import io
 import os
+import re
 import tempfile
 import shutil
 import time
+from pathlib import Path
 
 from app.face_processor import FaceProcessor
 
@@ -73,6 +75,11 @@ async def root():
     .err { color: #b91c1c; white-space: pre-wrap; font-size: 14px; }
     .ok { color: #065f46; font-size: 16px; }
     .link { color: #1d4ed8; text-decoration: underline; font-size: 16px; }
+    .btn-save { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 24px; min-height: 48px; font-size: 17px; font-weight: 600; border-radius: 12px; border: none; background: #059669; color: white; cursor: pointer; margin-top: 10px; width: 100%; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.35); -webkit-tap-highlight-color: transparent; touch-action: manipulation; text-decoration: none; }
+    .btn-save:hover { background: #047857; color: white; }
+    .btn-save:active { background: #046c4e; transform: scale(0.98); color: white; }
+    .result-item { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; background: #fafafa; }
+    .result-item .thumb-name { margin-bottom: 4px; }
     .result-previews { margin-top: 16px; }
     .result-previews-title { font-weight: 500; margin-bottom: 12px; color: #374151; font-size: 16px; }
     .loader { display: none; margin: 20px auto; text-align: center; }
@@ -100,6 +107,7 @@ async def root():
       .ok { font-size: 15px; }
       .link { font-size: 15px; }
       .result-previews-title { font-size: 15px; }
+      .btn-save { min-height: 52px; font-size: 18px; padding: 16px 20px; }
     }
     
     /* Оптимизация производительности для мобильных */
@@ -123,7 +131,7 @@ async def root():
 <body>
   <div class="wrap">
     <h2>Face Crop 512×512 (CPU)</h2>
-    <p class="muted">Загрузите до 5 фотографий → получите 512×512 с лицом по центру. 1 файл → PNG, 2–5 → ZIP.</p>
+    <p class="muted">Загрузите до 5 фотографий → получите 512×512 с лицом по центру. Каждый результат можно сохранить отдельно.</p>
 
     <div class="card">
       <div class="row">
@@ -156,7 +164,6 @@ async def root():
     <img id="modal-img" class="modal-content" alt="Full size preview" />
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script>
     const elFiles = document.getElementById('files');
     const elRun = document.getElementById('run');
@@ -308,43 +315,30 @@ async def root():
       images.forEach((imgData, idx) => {
         const url = URL.createObjectURL(imgData.blob);
         const div = document.createElement('div');
-        div.className = 'thumb';
+        div.className = 'thumb result-item';
+        const fileName = imgData.filename || ('image_' + (idx + 1) + '.png');
+        const safeName = fileName.replace(/</g, '&lt;');
+        const downloadAttr = fileName.replace(/"/g, '&quot;');
         div.innerHTML = `
           <div class="thumb-img-wrapper">
             <img loading="lazy" src="${url}" alt="result ${idx + 1}" decoding="async"/>
           </div>
-          <div class="thumb-name">${imgData.filename}</div>
+          <div class="thumb-name">${safeName}</div>
+          <a class="btn-save" href="${url}" download="${downloadAttr}">Сохранить</a>
         `;
-        // Единый обработчик для клика и касания
-        div.addEventListener('click', (e) => handleInteraction(e, () => openModal(url)));
-        div.addEventListener('touchend', (e) => handleInteraction(e, () => openModal(url)));
+        div.querySelector('.thumb-img-wrapper').addEventListener('click', (e) => handleInteraction(e, () => openModal(url)));
+        div.querySelector('.thumb-img-wrapper').addEventListener('touchend', (e) => handleInteraction(e, () => openModal(url)));
         grid.appendChild(div);
       });
       
       return container;
     }
 
-    async function extractImagesFromZip(blob) {
-      try {
-        if (typeof JSZip === 'undefined') {
-          console.error('JSZip library not loaded');
-          return [];
-        }
-        const zip = await JSZip.loadAsync(blob);
-        const images = [];
-        
-        for (const [filename, file] of Object.entries(zip.files)) {
-          if (!file.dir && (filename.toLowerCase().endsWith('.png') || filename.toLowerCase().endsWith('.jpg') || filename.toLowerCase().endsWith('.jpeg'))) {
-            const blob = await file.async('blob');
-            images.push({ filename, blob });
-          }
-        }
-        
-        return images.sort((a, b) => a.filename.localeCompare(b.filename));
-      } catch (e) {
-        console.error('Error extracting ZIP:', e);
-        return [];
-      }
+    function base64ToBlob(b64, mime) {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return new Blob([arr], { type: mime || 'image/png' });
     }
 
     elFiles.addEventListener('change', (e) => {
@@ -403,37 +397,40 @@ async def root():
           throw new Error(txt || ('HTTP ' + resp.status));
         }
 
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-
-        if (ct.includes('image/png')) {
-          elResult.innerHTML = `
-            <div class="ok">Готово (PNG).</div>
-            <div style="margin:10px 0;"><a class="link" href="${url}" download="face_512.png">Скачать PNG</a></div>
-            <img src="${url}" alt="result"/>
-          `;
-        } else if (ct.includes('application/zip')) {
-          setStatus('Распаковываю архив…');
-          const images = await extractImagesFromZip(blob);
-          
-          let html = `
-            <div class="ok">Готово (ZIP).</div>
-            <div style="margin:10px 0;"><a class="link" href="${url}" download="cropped_faces.zip">Скачать ZIP</a></div>
-          `;
-          
+        if (ct.includes('application/json')) {
+          const json = await resp.json();
+          const images = (json.images || []).map((img) => ({
+            filename: img.filename || 'face.png',
+            blob: base64ToBlob(img.data, 'image/png')
+          }));
           if (images.length > 0) {
-            const previewsContainer = renderResultPreviews(images);
-            elResult.innerHTML = html;
-            elResult.appendChild(previewsContainer);
+            elResult.innerHTML = '<div class="ok">Готово. Сохраните нужные файлы кнопками ниже.</div>';
+            elResult.appendChild(renderResultPreviews(images));
           } else {
-            elResult.innerHTML = html + '<div class="muted">ZIP содержит PNG 512×512 для каждого файла.</div>';
+            elResult.innerHTML = '<div class="muted">Нет обработанных изображений.</div>';
           }
         } else {
-          elResult.innerHTML = `
-            <div class="ok">Готово.</div>
-            <div class="muted">Неожиданный content-type: ${ct || '(пусто)'}.</div>
-            <div style="margin:10px 0;"><a class="link" href="${url}" download="result.bin">Скачать результат</a></div>
-          `;
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          let downloadName = 'face_512.png';
+          const cd = resp.headers.get('Content-Disposition');
+          if (cd) {
+            const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i) || cd.match(/filename=["']?([^"';]+)["']?/i);
+            if (m && m[1]) downloadName = m[1].trim();
+          }
+          if (ct.includes('image/png')) {
+            elResult.innerHTML = `
+              <div class="ok">Готово.</div>
+              <div style="margin:12px 0;"><a class="btn-save" href="${url}" download="${downloadName.replace(/"/g, '&quot;')}">Сохранить</a></div>
+              <img src="${url}" alt="result"/>
+            `;
+          } else {
+            elResult.innerHTML = `
+              <div class="ok">Готово.</div>
+              <div class="muted">Неожиданный content-type: ${ct || '(пусто)'}.</div>
+              <div style="margin:10px 0;"><a class="link" href="${url}" download="result.bin">Скачать результат</a></div>
+            `;
+          }
         }
       } catch (e) {
         setError(String(e?.message || e));
@@ -453,6 +450,13 @@ async def health():
     return {"status": "ok"}
 
 
+def _output_filename(original: str, idx: int) -> str:
+    """Имя для сохранения: оригинальное имя + _512x512.png (только ASCII)."""
+    stem = Path(original).stem if original else f"image_{idx}"
+    stem = re.sub(r"[^\w\-]", "_", stem)[:200]  # безопасно для заголовков
+    return f"{stem}_512x512.png"
+
+
 def _cleanup_dir(path: str) -> None:
     try:
         shutil.rmtree(path, ignore_errors=True)
@@ -464,8 +468,8 @@ def _cleanup_dir(path: str) -> None:
 async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] = File(...)):
     """
     Обрабатывает до 5 фотографий с лицами.
-    Если входной файл один — возвращает PNG 512x512.
-    Если файлов несколько — возвращает ZIP архив с 512x512.
+    Один файл — возвращает PNG 512×512.
+    Несколько файлов — возвращает JSON с массивом изображений (base64), без архива.
     """
     if len(files) > 5:
         raise HTTPException(status_code=400, detail="Maximum 5 files allowed")
@@ -497,12 +501,13 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
             print(f"Файл {idx+1}: чтение={read_time:.2f}с, обработка={process_time:.2f}с")
             
             if result:
-                output_path = os.path.join(temp_dir, f"cropped_{idx}_{result['filename']}")
+                out_name = _output_filename(filename, idx)
+                output_path = os.path.join(temp_dir, out_name)
                 result['image'].save(output_path)
                 processed.append(
                     {
                         "path": output_path,
-                        "filename": os.path.basename(output_path),
+                        "filename": out_name,
                     }
                 )
         
@@ -515,29 +520,24 @@ async def face_crop(background_tasks: BackgroundTasks, files: List[UploadFile] =
         total_time = time.time() - start_time
         print(f"✅ Обработано {len(processed)} файлов за {total_time:.2f}с (среднее: {total_time/len(processed):.2f}с на файл)")
 
-        # Если один файл — возвращаем PNG напрямую (без zip)
+        # Если один файл — возвращаем PNG с именем оригинал_512x512.png
         if len(processed) == 1:
             with open(processed[0]["path"], "rb") as f:
                 data = f.read()
-            # Важно: заголовки HTTP должны быть latin-1; используем ASCII filename.
+            fname = processed[0]["filename"]
             return Response(
                 content=data,
                 media_type="image/png",
-                headers={"Content-Disposition": 'attachment; filename="face_512.png"'},
+                headers={"Content-Disposition": f'attachment; filename="{fname}"'},
             )
 
-        # Иначе — ZIP
-        zip_path = os.path.join(temp_dir, "cropped_faces.zip")
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for item in processed:
-                zf.write(item["path"], arcname=item["filename"])
-
-        return FileResponse(
-            zip_path,
-            media_type="application/zip",
-            filename="cropped_faces.zip",
-            background=background_tasks,
-        )
+        # Несколько файлов — JSON с base64 (без архива)
+        images_payload = []
+        for item in processed:
+            with open(item["path"], "rb") as f:
+                data_b64 = base64.b64encode(f.read()).decode("ascii")
+            images_payload.append({"filename": item["filename"], "data": data_b64})
+        return JSONResponse(content={"images": images_payload})
     
     except HTTPException:
         raise

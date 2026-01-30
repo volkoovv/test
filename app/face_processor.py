@@ -519,7 +519,7 @@ class FaceProcessor:
                 M = cv2.getRotationMatrix2D(center, angle, 1.0)
                 img = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), 
                                     flags=cv2.INTER_LINEAR, 
-                                    borderMode=cv2.BORDER_REPLICATE)
+                                    borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
         
         except Exception as e:
             print(f"Alignment error: {e}")
@@ -547,10 +547,11 @@ class FaceProcessor:
             pad_right = max(0, x2 - w)
             pad_bottom = max(0, y2 - h)
             
-            # Добавляем padding (reflect mode для более естественного вида)
+            # Добавляем белый padding (вместо отражения краёв)
+            white = (255, 255, 255) if len(cropped.shape) == 3 else 255
             cropped = cv2.copyMakeBorder(
                 cropped, pad_top, pad_bottom, pad_left, pad_right,
-                cv2.BORDER_REFLECT_101
+                cv2.BORDER_CONSTANT, value=white
             )
         
         # Убеждаемся что размер правильный
